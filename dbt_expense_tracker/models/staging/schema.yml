@@ -1,0 +1,100 @@
+version: 2
+
+sources:
+  - name: expense_tracker
+    database: postgres
+    schema: public
+    tables:
+      - name: transactions
+        description: "Raw expense/income/saving transactions"
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+          - name: amount
+            tests:
+              - not_null
+          - name: transaction_date
+            tests:
+              - not_null
+          - name: category_id
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('expense_tracker', 'categories')
+                    field: id
+
+      - name: categories
+        description: "Transaction categories linked to types dimension"
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+          - name: name
+            tests:
+              - unique
+              - not_null
+          - name: type_id
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('expense_tracker', 'types')
+                    field: id
+
+      - name: types
+        description: "Type dimension (fixed, variable, income, saving) — replaces expense_groups"
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+          - name: name
+            tests:
+              - unique
+              - not_null
+
+      - name: budgets
+        description: "Unified budget table — per-category when category_id is set, envelope when NULL"
+
+      - name: dim_date
+        description: "Date dimension with calendar and fiscal period attributes"
+
+      - name: savings_goals
+        description: "Savings goals with targets and progress"
+
+      - name: merchant_rules
+        description: "Keyword → category mapping for auto-categorization"
+
+      - name: pay_dates
+        description: "Auto-detected salary dates for dynamic pay periods"
+
+      - name: v_pay_periods
+        description: "Dynamic pay period boundaries derived from pay_dates"
+        columns:
+          - name: period_start
+            tests:
+              - not_null
+          - name: period_end
+            tests:
+              - not_null
+
+models:
+  - name: stg_transactions
+    description: "Cleaned transactions with AEST date conversion and time dimensions"
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_categories
+    description: "Cleaned categories dimension"
+    columns:
+      - name: category_id
+        tests:
+          - unique
+          - not_null

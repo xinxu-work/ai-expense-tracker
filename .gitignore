@@ -1,0 +1,49 @@
+# Environment & secrets
+.env
+.env.local
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# dbt
+dbt_expense_tracker/target/
+dbt_expense_tracker/dbt_packages/
+dbt_expense_tracker/logs/
+dbt_expense_tracker/profiles.yml
+dbt_expense_tracker/.user.yml
+
+# Supabase
+.supabase/
+
+# Workspace-local developer tools
+.tools/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Personal finance data and generated exports
+*statement*.csv
+*statement*.xlsx
+*transactions*.csv
+Living_Expenses*
+*.parquet

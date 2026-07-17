@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: fct_monthly_summary
+    description: "Monthly aggregated transactions by category with YTD running totals"
+    columns:
+      - name: fiscal_month
+        description: "Fiscal month in YYYY-MM format (14th–13th cycle)"
+        tests:
+          - not_null
+      - name: category_name
+        tests:
+          - not_null
+      - name: total_amount
+        tests:
+          - not_null
+
+  - name: fct_savings_rate
+    description: "Monthly income vs expenses vs savings with savings rate percentages and 3-month rolling averages"
+    columns:
+      - name: fiscal_month
+        description: "Fiscal month in YYYY-MM format (14th–13th cycle)"
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_budget_vs_actual
+    description: "Budget vs actual spending comparison with variance and utilisation metrics"
+    columns:
+      - name: fiscal_month
+        tests:
+          - not_null
+      - name: budget_status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['over_budget', 'near_budget', 'within_budget']
+
+  - name: fct_expense_group_summary
+    description: "Fixed vs variable expense group spending vs budget, with utilisation % and status"
+    columns:
+      - name: fiscal_month
+        tests:
+          - not_null
+      - name: expense_group
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['fixed', 'variable']
+
+  - name: fct_pay_period_summary
+    description: "Pay period aggregated transactions by category — dynamic periods based on actual salary dates"
+    columns:
+      - name: period_label
+        tests:
+          - not_null
+      - name: period_start_date
+        tests:
+          - not_null
+      - name: category_name
+        tests:
+          - not_null
+      - name: total_amount
+        tests:
+          - not_null
