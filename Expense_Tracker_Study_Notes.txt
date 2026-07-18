@@ -1,0 +1,215 @@
+Client-Facing Interface
+
+
+
+                ┌──────────────────────────────┐
+                    │     Web App (React/Next.js)   │
+                    │                              │
+                    │  ┌──────────┐ ┌───────────┐  │
+    Customer ──────>│  │  Upload  │ │  Chat     │  │
+                    │  │  Panel   │ │  Panel    │  │
+                    │  └────┬─────┘ └─────┬─────┘  │
+                    │       │             │        │
+                    │       ▼             ▼        │
+                    │  FastAPI Backend  + Claude   │
+                    │       │             │        │
+                    │       ▼             ▼        │
+                    │  ┌──────────────────────┐    │
+                    │  │   Power BI Embed     │    │
+                    │  │   (Dashboard View)   │    │
+                    │  └──────────────────────┘    │
+                    └──────────────────────────────┘
+
+Two Panels, One Page
+Left: Upload + Dashboard	Right: Chat with Claude
+Drag & drop CSV/Excel	"Why did my transport cost spike in March?"
+AI previews column mapping	"Compare my spending vs last month"
+Confirm → data loads	"Set a budget of $500 for dining out"
+Power BI embedded dashboard	Claude reads your data, explains insights
+
+How the Chat Works
+The chat panel uses Claude API + tool calling — same concept as the Databricks agents you built:
+User: "Which category did I overspend on?"
+  → Claude calls: GET /summary/monthly?year=2026&month=3
+  → Claude replies: "Your dining out was $780 against a $500 budget (156% utilisation)"
+
+User: "Show me the trend for groceries"
+  → Claude calls: GET /transactions?category_id=<groceries-uuid>
+  → Claude replies: "Groceries trending up: Feb $420, Mar $455, Apr $510"
+  → Dashboard auto-filters to grocery category
+
+
+ELT Diagram:
+                         E+L (one step)                    T (dbt)
+                    ┌───────────────────┐           ┌──────────────────┐
+                    │                   │           │                  │
+  Your Excel ──────►│  Python import     │──────────►│  dbt models      │
+  (Mar expenses)    │  import_march_     │  Raw data  │  run INSIDE      │
+                    │  data.py           │  in        │  Supabase        │
+                    │                    │  Supabase  │  PostgreSQL      │
+                    │  Reads Excel       │           │                  │
+                    │  Maps columns      │           │  stg_* (views)   │
+                    │  Inserts to        │           │  fct_* (tables)  │
+                    │  Supabase via      │           │                  │
+                    │  REST API          │           │                  │
+                    └───────────────────┘           └──────────────────┘
+                                                     │
+                                                     ▼
+                                              Power BI reads
+                                              marts.* tables
+
+
+Raw data enters Supabase via Python (reading Excel, mapping columns, inserting through REST API), then dbt runs SQL transformations directly inside PostgreSQL — staging views clean and standardize the data (AEST timezone, date extraction), mart tables compute analytics (monthly summaries, savings rate, budget comparisons) — all without moving data out of the database, and the final tables feed directly into Power BI dashboards.
+
+
+Data Modelling V1
+                       ┌──────────────────────────┐
+                       │        dim_date            │
+                       │  PK date                   │
+                       │     year, month, day       │
+                       │     day_name, month_name   │
+                       │     is_weekend, quarter    │
+                       │     fiscal_month_label     │
+                       │     fiscal_year            │
+                       └──────────┬─────────────────┘
+                                  │ FK
+                                  ▼
+┌──────────────────┐    ╔═══════════════════╗    ┌──────────────────┐
+│   categories      │    ║   transactions     ║    │  savings_goals   │
+│ PK id     UUID   │◄───║ PK id      UUID    ║───►│ PK id     UUID   │
+│    name   VARCHAR │    ║ FK transaction_date ║    │    name   VARCHAR│
+│    type   VARCHAR │    ║ FK category_id      ║    │    target_amount │
+│    expense_group  │    ║ FK savings_goal_id   ║    │    current_amount│
+└────────┬─────────┘    ║    amount   DECIMAL  ║    └──────────────────┘
+         │              ║    description       ║
+         │ FK           ╚══════════════════════╝
+         ▼                       │
+┌──────────────────┐              │ FK (by expense_group value)
+│ monthly_budgets   │              ▼
+│ PK id     UUID   │    ┌─────────────────────┐
+│ FK category_id   │    │monthly_group_budgets│
+│    year_month    │    │ PK id       UUID    │
+│    budget_amount │    │    expense_group    │
+└──────────────────┘    │    year_month      │
+                        │    budget_amount    │
+                        └─────────────────────┘
+
+Data Modelling V2 - 22-06-2026
+                      DIMENSION                         DIMENSION
+                 ┌──────────────────┐            ┌──────────────────┐
+                 │  expense_groups  │            │    dim_date      │
+                 │──────────────────│            │──────────────────│
+                 │ id  PK (UUID)    │            │ date PK (DATE)   │
+                 │ name             │            │ year             │
+                 │ type (check)     │            │ month            │
+                 │ sort_order       │            │ day              │
+                 └──┬───────────┬───┘            │ quarter          │
+                    │           │                │ fiscal_year      │
+                    │           │                │ fiscal_month_label│
+                    │           │                └────────┬─────────┘
+                    │           │                         │
+   ┌────────────────┘           └────────────┐            │
+   ▼                                         ▼            ▼
+┌──────────────────────┐   ┌──────────────────────────┐   ┌──────────────────┐
+│     categories       │   │  monthly_group_budgets   │   │  transactions    │
+│     (DIMENSION)      │   │       (FACT)             │   │     (FACT)       │
+│──────────────────────│   │──────────────────────────│   │──────────────────│
+│ id  PK               │   │ id  PK                   │   │ id  PK           │
+│ name                 │   │ expense_group_id FK ─────┼──►│ transaction_date FK──► dim_date
+│ expense_group_id FK ─┼──►│ year_month               │   │ category_id FK ───► categories
+│ icon                 │   │ budget_amount (measure)  │   │ savings_goal_id FK (nullable)
+│                      │   └──────────────────────────┘   │ amount (measure)  │
+└──────────┬───────────┘                                  │ description       │
+           │                                              │ payment_method    │
+           │                                              │ is_recurring      │
+           │                                              └───────┬───────────┘
+           │                                                      │
+           ▼                                                      ▼
+┌──────────────────────┐                           ┌──────────────────────┐
+│  monthly_budgets     │                           │   savings_goals      │
+│      (FACT)          │                           │    (DIMENSION)       │
+│──────────────────────│                           │──────────────────────│
+│ id  PK               │                           │ id  PK               │
+│ category_id FK ──────┼──► categories             │ name                 │
+│ year_month           │                           │ target_amount        │
+│ budget_amount (meas) │                           │ current_amount       │
+└──────────────────────┘                           │ target_date          │
+                                                   │ status               │
+                                                   └──────────────────────┘
+
+
+
+Table	Role	FK →
+dim_date	Dimension	—
+expense_groups	Dimension	—
+categories	Dimension	expense_groups
+savings_goals	Dimension	—
+transactions	Fact (actuals)	dim_date, categories, savings_goals
+monthly_budgets	Fact (targets)	categories
+monthly_group_budgets	Fact (targets)	expense_groups
+What We Already Have vs What's Needed
+
+Layer	Have?	What to Add
+Database (Supabase)	Done	Nothing
+API (FastAPI)	Done	/upload-csv endpoint with AI column mapping
+AI Cleaner	Not yet	Claude API call to detect columns + categories
+dbt transforms	Done	Just run them
+Power BI dashboard	Soon	Embed in web app (Power BI Embedded)
+Web frontend	Not yet	React/Next.js with upload + chat + embed
+Chat agent	Not yet	Claude API with tool-calling (similar to your Databricks agent)
+
+
+
+FastAPI vs dbt
+         DATA ENTRY                          DATA TRANSFORMATION
+    ┌─────────────────┐                 ┌──────────────────────┐
+    │    FastAPI       │                 │       dbt            │
+    │  (Python code)   │                 │   (SQL only)         │
+    │                  │                 │                      │
+    │  POST /transactions               │  stg_transactions.sql │
+    │  POST /categories                 │  stg_categories.sql   │
+    │  GET  /summary   │                 │  fct_monthly_summary  │
+    └────────┬─────────┘                 └──────────┬───────────┘
+             │                                      │
+             │  INSERT / SELECT                     │  CREATE TABLE AS SELECT
+             │  (raw data CRUD)                     │  (transforms raw → analytics)
+             │                                      │
+             ▼                                      ▼
+    ┌──────────────────────────────────────────────────────┐
+    │              Supabase PostgreSQL                      │
+    │                                                      │
+    │  Raw tables:           dbt-built tables:              │
+    │   transactions          stg_transactions (view)       │
+    │   categories            stg_categories (view)         │
+    │   expense_groups        fct_monthly_summary           │
+    │   dim_date              fct_budget_vs_actual          │
+    │   monthly_budgets       fct_savings_rate              │
+    │   savings_goals         fct_expense_group_summary     │
+    └──────────────────────────────────────────────────────┘
+                                      │
+                                      │  SELECT (read-only)
+                                      ▼
+                              ┌──────────────┐
+                              │   Power BI   │
+                              │  Dashboards  │
+                              └──────────────┘
+
+In plain English:
+FastAPI = the front door. You POST a new transaction, it writes to the transactions table. That's it — raw data in.
+
+dbt = the kitchen. It reads those raw tables, runs SQL queries (like your stg_transactions.sql above — joining transactions to dim_date, adding fiscal periods, cleaning nulls), and writes the results into new analytics tables like fct_monthly_summary. All pure SQL. No API calls.
+
+Supabase = the database where everything lives. Both FastAPI and dbt connect to it directly — FastAPI writes raw data, dbt reads raw and writes analytics tables. They share the database, not each other.
+
+dbt flow:
+
+RAW TABLES (source)              STAGING (views)               MARTS (tables)
+─────────────────               ────────────────              ──────────────
+transactions ──────┐
+dim_date ──────────┼──► stg_transactions ──┐
+                   │                        │             ┌── fct_monthly_summary
+categories ────────┼──► stg_categories ─────┤             ├── fct_savings_rate
+expense_groups ────┘                        ├── all 4 ───┼── fct_budget_vs_actual
+                                            │   marts     └── fct_expense_group_summary
+monthly_budgets ────────────────────────────┘
+monthly_group_budgets ──────────────────────┘

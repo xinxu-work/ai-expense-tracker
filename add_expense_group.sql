@@ -9,7 +9,7 @@
 
 -- Add expense_group to categories + create group-level budgets
 -- Run this in Supabase SQL Editor:
--- Run in your project's Supabase SQL Editor.
+-- https://supabase.com/dashboard/project/meluzsqwjzrsmmhimtpk/sql/new
 
 -- 1. Add expense_group column
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS expense_group VARCHAR(20);

@@ -1,6 +1,6 @@
 -- Star Schema v3: Simplify budget model — single types + budgets tables
 -- Replaces expense_groups, monthly_budgets, monthly_group_budgets
--- Run in your project's Supabase SQL Editor.
+-- Run in: https://supabase.com/dashboard/project/meluzsqwjzrsmmhimtpk/sql/new
 
 -- ============================================
 -- 0. DROP dependent dbt objects so old columns/tables can be removed

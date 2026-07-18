@@ -1,7 +1,7 @@
 -- Star Schema Migration
 -- Adds dim_date, savings_goal_id FK to transactions
 -- Run this in Supabase SQL Editor:
--- Run in your project's Supabase SQL Editor.
+-- https://supabase.com/dashboard/project/meluzsqwjzrsmmhimtpk/sql/new
 
 -- ============================================
 -- 1. CREATE dim_date (Date Dimension)

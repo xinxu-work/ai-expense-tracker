@@ -11,7 +11,7 @@ Pipeline:
 CommBank CSV format (typical):
   Date,Amount,Description,Balance
   12/06/2026,-88.70,Woolworths Group Ltd Sydney AU,12450.30
-  12/06/2026,5500.00,SALARY PAYMENT,17950.30
+  12/06/2026,5500.00,TRANSFER CREDIT XIN XU SALARY,17950.30
 
 Usage:
   python import_commbank.py path/to/statement.csv [--dry-run] [--detect-pay-dates]

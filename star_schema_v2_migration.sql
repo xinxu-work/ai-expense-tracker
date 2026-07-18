@@ -1,6 +1,6 @@
 -- Star Schema v2: Proper expense_groups dimension with UUID FKs
 -- Replaces text-based expense_group with FK links
--- Run in your project's Supabase SQL Editor.
+-- Run in: https://supabase.com/dashboard/project/meluzsqwjzrsmmhimtpk/sql/new
 
 -- ============================================
 -- 0. DROP dependent dbt objects so old columns can be removed

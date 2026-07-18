@@ -1,55 +1,76 @@
-# AI Expense Tracker
+# Expense Tracker - Full Data Pipeline
 
-An end-to-end personal-finance data platform with a deterministic budgeting API and a Microsoft Foundry agent:
+Personal expense & savings tracker with a modern data and agentic AI stack:
+**Supabase -> dbt -> FastAPI -> Microsoft Foundry Agent -> Power BI**
 
-`Supabase PostgreSQL -> dbt -> FastAPI -> Microsoft Foundry Agent -> Power BI`
-
-The project demonstrates dimensional modelling, SCD Type 2 budgets, bank-statement ingestion, analytics marts, API design, and tool-calling AI with explicit financial-safety guardrails.
-
-![Expense Tracker dashboard mockup](docs/assets/expense-tracker-dashboard.png)
+---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    A["Bank CSV / API"] --> B["Supabase PostgreSQL"]
-    B --> C["dbt staging and marts"]
-    C --> D["Power BI"]
-    B --> E["FastAPI"]
-    F["Microsoft Foundry Agent"] -->|"tool call"| E
-    E -->|"deterministic budget result"| F
+```
+Data Entry (API / Supabase UI)
+        |
+   Supabase (PostgreSQL)
+        |
+   dbt Core (transform)
+        |
+   Mart Tables + FastAPI business tools
+        |                       |
+   Power BI dashboard     Microsoft Foundry Agent
+                                  |
+                        Purchase budget advice
 ```
 
-## Highlights
+---
 
-- Supabase/PostgreSQL schema for transactions, categories, pay periods, savings goals, merchant rules, and SCD Type 2 budgets.
-- dbt staging and mart models for monthly summaries, savings rates, pay-period reporting, and budget-versus-actual analysis.
-- FastAPI CRUD endpoints plus `POST /advice/can-i-afford` for deterministic category or envelope-budget checks.
-- Microsoft Foundry tool-calling agent that explains the API calculation without inventing financial advice.
-- CommBank CSV import with rule-based categorisation, duplicate detection, dry-run support, and optional pay-date detection.
-- Unit tests for the purchase-affordability rules.
+## 1. Supabase Setup
 
-## Quick start
+### Create Project
+1. Go to https://supabase.com and create a free account
+2. Create a new project (pick a region close to Australia)
+3. Note your **Project URL** and **anon key** from Settings > API
 
-### 1. Create the database
+### Run Schema
+1. Go to **SQL Editor** in the Supabase dashboard
+2. Paste the contents of `supabase_schema.sql`
+3. Click **Run** — this creates all tables, indexes, views, and seed data
 
-Create a Supabase project, then run [`supabase_schema.sql`](supabase_schema.sql) in the Supabase SQL Editor.
+### Get Connection Details (for dbt & Power BI)
+- Go to **Settings > Database**
+- Note: Host, Port (5432), Database (postgres), User (postgres), Password
 
-### 2. Run the API
+---
+
+## 2. FastAPI Setup
 
 ```bash
 cd api
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure environment
 cp .env.example .env
+# Edit .env with your Supabase URL and anon key
+
+# Run the API
 python main.py
 ```
 
-Set your own Supabase and Foundry values in `api/.env`. The API is available at `http://localhost:8000`, with OpenAPI docs at `/docs`.
+API runs at http://localhost:8000
 
-Example affordability request:
+- Interactive docs: http://localhost:8000/docs
+- Endpoints: `/transactions`, `/categories`, `/budgets`, `/savings-goals`, `/summary/monthly`, `/advice/can-i-afford`
+
+### Purchase affordability endpoint
+
+The endpoint checks a proposed purchase against either its category budget or,
+when no category budget exists, the category's type-level envelope budget.
+Shoes use the seeded `Shopping` category and the shared `variable` envelope.
 
 ```bash
 curl -X POST http://localhost:8000/advice/can-i-afford \
@@ -57,30 +78,16 @@ curl -X POST http://localhost:8000/advice/can-i-afford \
   -d '{"item_name":"running shoes","price":150,"category_name":"Shopping"}'
 ```
 
-### 3. Run dbt
+The deterministic response includes current-month spending, remaining budget,
+projected utilisation, an `activity_id`, and one of four decisions:
+`within_budget`, `tight`, `over_budget`, or `no_budget`.
 
-```bash
-pip install dbt-postgres
-cp dbt_expense_tracker/profiles.example.yml ~/.dbt/profiles.yml
-cd dbt_expense_tracker
-dbt debug
-dbt run
-dbt test
-```
+---
 
-The example profile reads connection details from environment variables:
+## 3. Microsoft Foundry Agent
 
-```bash
-export SUPABASE_DB_HOST="your-pooler-host.supabase.com"
-export SUPABASE_DB_USER="your-database-user"
-export SUPABASE_DB_PASSWORD="your-database-password"
-```
-
-On PowerShell, use `$env:VARIABLE_NAME = "value"` instead of `export`.
-
-### 4. Run the Foundry agent
-
-Keep the API running in another terminal, then:
+Keep the FastAPI service running, then configure `api/.env` from
+`api/.env.example` and install the agent dependencies:
 
 ```bash
 pip install -r requirements-agent.txt
@@ -88,38 +95,148 @@ az login
 python foundry_agent.py
 ```
 
-The agent calls the affordability endpoint and explains the returned spending, remaining budget, and utilisation. It is explicitly instructed that budget fit does not prove cash availability and is not financial advice.
+For a new tenant, set `FOUNDRY_PROJECT_ENDPOINT` to the new Foundry project and
+`FOUNDRY_MODEL_DEPLOYMENT` to an available model deployment in that project.
+The model name is configuration rather than a hard-coded dependency.
 
-## Tests
+Example question:
 
+> I want to buy a $150 pair of running shoes. Does it fit this month's budget?
+
+The Foundry agent calls `POST /advice/can-i-afford` and explains the API's
+calculation. It is instructed not to estimate affordability itself and to state
+that fitting a budget does not prove cash availability or constitute financial
+advice.
+
+---
+
+## 4. dbt Setup
+
+### Install dbt
 ```bash
-python -m unittest discover -s api/tests -v
+pip install dbt-postgres
 ```
 
-## Repository structure
+### Configure Connection
+Copy `dbt_expense_tracker/profiles.yml` to `~/.dbt/profiles.yml` and update with your Supabase credentials.
 
-```text
-.
-|-- api/                         FastAPI service and tests
-|-- dbt_expense_tracker/         dbt models and safe profile template
-|-- docs/                        Agent governance design and dashboard mockup
-|-- foundry_agent.py             Foundry tool-calling agent
-|-- import_commbank.py           Generic bank CSV ingestion pipeline
-|-- requirements-agent.txt       Agent dependencies
-|-- supabase_schema.sql          Canonical PostgreSQL schema
-|-- star_schema_*_migration.sql  Incremental schema evolution scripts
-`-- seed_test_data.sql           Synthetic development data
+### Run dbt
+```bash
+cd dbt_expense_tracker
+
+# Test connection
+dbt debug
+
+# Run all models
+dbt run
+
+# Run tests
+dbt test
+
+# Generate docs
+dbt docs generate
+dbt docs serve
 ```
 
-## Security and privacy
+### dbt Model Lineage
+```
+sources (raw tables)
+    |
+staging (stg_transactions, stg_categories)
+    |-- AEST date conversion
+    |-- Type casting & cleaning
+    |
+marts
+    |-- fct_monthly_summary     (spending by category per month, YTD)
+    |-- fct_savings_rate        (income vs expenses, savings %, 3-month rolling avg)
+    |-- fct_budget_vs_actual    (budget utilisation, over/under flags)
+```
 
-- No bank statements, personal transactions, account identifiers, passwords, or API keys are included.
-- `.env`, dbt user profiles, local tool binaries, generated data, and statement exports are ignored.
-- Use least-privilege credentials and rotate any credential that has previously been committed elsewhere.
+---
 
-## Roadmap
+## 5. Power BI Connection
 
-- Complete the Power BI dashboard and publish screenshots.
-- Add AI-assisted transaction mapping with human review.
-- Add multi-tenant authentication and row-level security.
-- Add scheduled ingestion and dbt orchestration.
+### Connect to Supabase PostgreSQL
+
+1. Open Power BI Desktop
+2. **Get Data** > **PostgreSQL database**
+3. Enter connection details:
+   - Server: `db.YOUR_PROJECT_ID.supabase.co`
+   - Database: `postgres`
+   - Data Connectivity mode: **DirectQuery** (for live data) or **Import**
+4. Enter credentials: User `postgres`, Password from Supabase dashboard
+5. Select the mart tables:
+   - `fct_monthly_summary`
+   - `fct_savings_rate`
+   - `fct_budget_vs_actual`
+
+### Suggested Dashboard Pages
+
+**Page 1: Monthly Overview**
+- Card visuals: Total Income, Total Expenses, Net Savings, Savings Rate %
+- Bar chart: Spending by category (current month)
+- Line chart: Monthly spending trend (last 12 months)
+
+**Page 2: Budget Tracker**
+- Gauge visuals: Budget utilisation per category
+- Table: Budget vs Actual with conditional formatting (red = over budget)
+- Slicer: Month/Year selector
+
+**Page 3: Savings Progress**
+- KPI visual: Savings rate % vs target
+- Line chart: 3-month rolling average income vs expenses
+- Progress bars: Savings goals completion
+
+### Power BI Tips
+- Use **DirectQuery** if you want real-time data from Supabase
+- Use **Import** mode if you want faster performance (schedule refresh)
+- Date columns are already AEST-converted in the dbt models
+
+---
+
+## 6. Future Enhancements (Phase 2+)
+
+- [ ] AI-powered transaction categorisation (Claude API)
+- [ ] Auto-import from bank CSV/OFX files
+- [ ] Multi-tenant support for customer deployments
+- [ ] Airflow orchestration for scheduled dbt runs
+- [ ] Industry templates (restaurant, retail)
+- [ ] Onboard the Foundry agent to Agent 365 for enterprise identity,
+      governance, monitoring, and lifecycle management
+
+Agent 365 is deliberately excluded from the personal prototype's runtime. See
+[`docs/agent-365-governance-roadmap.md`](docs/agent-365-governance-roadmap.md)
+for the future adoption design.
+
+---
+
+## Project Structure
+
+```
+expense_tracker/
+|-- supabase_schema.sql          # Database schema (run in Supabase SQL Editor)
+|-- foundry_agent.py             # Foundry chat agent and tool dispatch
+|-- requirements-agent.txt       # Foundry agent dependencies
+|-- docs/
+|   |-- agent-365-governance-roadmap.md
+|-- api/
+|   |-- main.py                  # FastAPI backend
+|   |-- budget_advisor.py        # Deterministic purchase budget rules
+|   |-- requirements.txt         # Python dependencies
+|   |-- .env.example             # Environment template
+|   |-- tests/
+|       |-- test_budget_advisor.py
+|-- dbt_expense_tracker/
+|   |-- dbt_project.yml          # dbt config
+|   |-- profiles.yml             # DB connection (copy to ~/.dbt/)
+|   |-- models/
+|       |-- staging/
+|       |   |-- stg_transactions.sql
+|       |   |-- stg_categories.sql
+|       |   |-- schema.yml
+|       |-- marts/
+|           |-- fct_monthly_summary.sql
+|           |-- fct_savings_rate.sql
+|           |-- fct_budget_vs_actual.sql
+|           |-- schema.yml
+```
