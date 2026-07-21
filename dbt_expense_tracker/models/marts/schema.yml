@@ -2,12 +2,23 @@ version: 2
 
 models:
   - name: fct_monthly_summary
-    description: "Monthly aggregated transactions by category with YTD running totals"
+    description: "Transactions by the selected payday or calendar reporting period"
     columns:
-      - name: fiscal_month
-        description: "Fiscal month in YYYY-MM format (14th–13th cycle)"
+      - name: period_label
         tests:
           - not_null
+      - name: period_start_date
+        tests:
+          - not_null
+      - name: period_end_date
+        tests:
+          - not_null
+      - name: period_basis
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['payday', 'calendar', 'calendar_fallback']
       - name: category_name
         tests:
           - not_null

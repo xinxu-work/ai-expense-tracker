@@ -1,1 +1,3 @@
-dim_date answers calendar questions such as “What weekday was this?” or “Which calendar quarter?” Meanwhile, v_pay_periods determines which personal reporting period contains the transaction:
+dim_date answers calendar questions such as “What weekday was this?” or “Which calendar quarter?” Meanwhile, v_pay_periods determines which personal reporting period contains the transaction.
+
+dbt builds the models automatically in dependency order when you run `dbt run`; you do not run each SQL file manually. The staging model reads the existing Supabase tables and views, cleans and enriches the transaction data, and is materialized as a view. The mart models use the staging view and are materialized as reporting tables. dbt discovers this order from `{{ ref(...) }}`  references, then `dbt test` validates the generated objects and their data.

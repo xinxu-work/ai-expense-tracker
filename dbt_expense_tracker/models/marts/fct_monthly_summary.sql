@@ -1,54 +1,27 @@
--- Mart: Monthly summary by category
--- Key metrics for dashboard consumption
+-- Reporting-period summary by category.
+-- Uses confirmed payday periods by default.
 
-WITH transactions AS (
-    SELECT * FROM {{ ref('stg_transactions') }}
-),
-
-categories AS (
-    SELECT * FROM {{ ref('stg_categories') }}
-),
-
-monthly_agg AS (
-    SELECT
-        t.fiscal_month,
-        t.calendar_year,
-        t.calendar_month,
-        t.category_id,
-        c.category_name,
-        c.category_type,
-        COUNT(*) AS transaction_count,
-        SUM(t.amount) AS total_amount,
-        AVG(t.amount) AS avg_amount,
-        MIN(t.amount) AS min_amount,
-        MAX(t.amount) AS max_amount
-    FROM transactions t
-    JOIN categories c ON t.category_id = c.category_id
-    GROUP BY
-        t.fiscal_month,
-        t.calendar_year,
-        t.calendar_month,
-        t.category_id,
-        c.category_name,
-        c.category_type
+WITH period_summary AS (
+    SELECT * FROM {{ ref('fct_pay_period_summary') }}
 )
 
 SELECT
-    fiscal_month,
-    calendar_year,
-    calendar_month,
+    period_label,
+    period_start_date,
+    period_end_date,
+    period_basis,
     category_id,
     category_name,
     category_type,
+    type_name,
     transaction_count,
     total_amount,
     avg_amount,
-    min_amount,
-    max_amount,
-    -- Running total within the year
+
     SUM(total_amount) OVER (
-        PARTITION BY calendar_year, category_type
-        ORDER BY fiscal_month
-    ) AS ytd_amount
-FROM monthly_agg
-ORDER BY fiscal_month DESC, category_type, total_amount DESC
+        PARTITION BY category_type
+        ORDER BY period_start_date
+    ) AS running_total
+
+FROM period_summary
+ORDER BY period_start_date DESC, category_type, total_amount DESC

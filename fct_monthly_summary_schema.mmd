@@ -1,0 +1,14 @@
+flowchart TD
+    M["fct_monthly_summary\nReporting-period model"]
+
+    M --> PL["period_label\nnot null"]
+    M --> PS["period_start_date\nnot null"]
+    M --> PE["period_end_date\nnot null"]
+    M --> PB["period_basis\nnot null"]
+    M --> CN["category_name\nnot null"]
+    M --> TA["total_amount\nnot null"]
+
+    PB --> V["Accepted values"]
+    V --> P["payday"]
+    V --> C["calendar"]
+    V --> F["calendar_fallback"]
