@@ -27,13 +27,21 @@ models:
           - not_null
 
   - name: fct_savings_rate
-    description: "Monthly income vs expenses vs savings with savings rate percentages and 3-month rolling averages"
+    description: "Income, expenses and savings by selected reporting period"
     columns:
-      - name: fiscal_month
-        description: "Fiscal month in YYYY-MM format (14th–13th cycle)"
+      - name: period_start_date
         tests:
           - unique
           - not_null
+      - name: period_label
+        tests:
+          - not_null
+      - name: period_basis
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['payday', 'calendar', 'calendar_fallback']
 
   - name: fct_budget_vs_actual
     description: "Category budget versus actual spending for the selected payday or calendar reporting period"
