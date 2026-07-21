@@ -130,6 +130,9 @@ dbt debug
 # Run all models
 dbt run
 
+# Optional: use standard calendar months instead of salary pay periods
+dbt run --vars '{period_mode: calendar}'
+
 # Run tests
 dbt test
 
@@ -137,6 +140,11 @@ dbt test
 dbt docs generate
 dbt docs serve
 ```
+
+The default `period_mode` is `payday`. It assigns each transaction to the
+period beginning on a confirmed salary date and ending the day before the next
+salary date. Calendar mode uses the first through last day of each month and
+does not require removing or disabling the `pay_dates` table.
 
 ### dbt Model Lineage
 ```

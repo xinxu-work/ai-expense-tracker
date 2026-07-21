@@ -66,9 +66,10 @@ ON CONFLICT (date) DO NOTHING;
 -- ============================================================
 CREATE TABLE types (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name       VARCHAR(20) NOT NULL UNIQUE,
-    sort_order INT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    name       VARCHAR(20) NOT NULL UNIQUE
+               CHECK (name IN ('fixed', 'variable', 'income', 'saving')),
+    sort_order INT NOT NULL UNIQUE CHECK (sort_order BETWEEN 1 AND 4),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 INSERT INTO types (name, sort_order) VALUES
@@ -86,7 +87,8 @@ CREATE TABLE categories (
     name       VARCHAR(50) NOT NULL UNIQUE,
     type_id    UUID NOT NULL REFERENCES types(id),
     icon       VARCHAR(10),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_categories_id_type UNIQUE (id, type_id)
 );
 
 -- Seed 22 default categories
@@ -163,9 +165,20 @@ CREATE TRIGGER trigger_transactions_updated
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Additional columns for bank import support
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual';
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS raw_description VARCHAR(255);
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS import_batch_id VARCHAR(50);
+ALTER TABLE transactions
+    ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    ADD COLUMN raw_description VARCHAR(255),
+    ADD COLUMN import_batch_id VARCHAR(50),
+    ADD CONSTRAINT chk_transactions_source
+        CHECK (source IN ('manual', 'bank_import'));
+
+CREATE INDEX idx_transactions_import_batch
+ON transactions(import_batch_id)
+WHERE import_batch_id IS NOT NULL;
+
+CREATE INDEX idx_transactions_import_dedup
+ON transactions(transaction_date, amount, raw_description)
+WHERE source = 'bank_import';
 
 -- ============================================================
 -- 6. BUDGETS  (single budget table — SCD Type 2 date-range versioning)
@@ -177,11 +190,14 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS import_batch_id VARCHAR(50);
 CREATE TABLE budgets (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     type_id       UUID NOT NULL REFERENCES types(id),
-    category_id   UUID REFERENCES categories(id),   -- NULLABLE: NULL = envelope for the type
+    category_id   UUID,                              -- NULLABLE: NULL = envelope for the type
     start_date    DATE NOT NULL,
     end_date      DATE NOT NULL DEFAULT '2030-01-01',
     budget_amount DECIMAL(10, 2) NOT NULL CHECK (budget_amount >= 0),
-    created_at    TIMESTAMPTZ DEFAULT NOW()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_budgets_date_range CHECK (end_date > start_date),
+    CONSTRAINT fk_budgets_category_type
+        FOREIGN KEY (category_id, type_id) REFERENCES categories(id, type_id)
 );
 
 -- Partial unique indexes: only ONE active row (end_date = '2030-01-01') per mode
@@ -194,6 +210,14 @@ CREATE UNIQUE INDEX idx_budgets_active_envelope
 ON budgets(type_id)
 WHERE category_id IS NULL AND end_date = '2030-01-01';
 
+CREATE INDEX idx_budgets_category_dates
+ON budgets(category_id, start_date, end_date)
+WHERE category_id IS NOT NULL;
+
+CREATE INDEX idx_budgets_envelope_dates
+ON budgets(type_id, start_date, end_date)
+WHERE category_id IS NULL;
+
 -- ============================================================
 -- 6b. MERCHANT_RULES — keyword → category mapping for auto-categorization
 -- ============================================================
@@ -201,8 +225,8 @@ CREATE TABLE merchant_rules (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     keyword     VARCHAR(100) NOT NULL UNIQUE,
     category_id UUID NOT NULL REFERENCES categories(id),
-    priority    INT DEFAULT 0,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
+    priority    INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Seed initial rules
@@ -233,7 +257,8 @@ ON CONFLICT (keyword) DO NOTHING;
 -- ============================================================
 CREATE TABLE pay_dates (
     pay_date    DATE PRIMARY KEY,
-    source      VARCHAR(20) DEFAULT 'auto',
+    source      VARCHAR(20) NOT NULL DEFAULT 'auto'
+                 CHECK (source IN ('auto', 'manual')),
     note        VARCHAR(100)
 );
 
@@ -246,37 +271,46 @@ ALTER TABLE categories     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE savings_goals  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE merchant_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pay_dates      ENABLE ROW LEVEL SECURITY;
 
 -- Public read on reference/dimension tables
 CREATE POLICY "Allow public read" ON dim_date
-    FOR SELECT TO anon USING (true);
+    FOR SELECT TO anon, authenticated USING (true);
 
 CREATE POLICY "Allow public all" ON types
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all" ON categories
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- Full access on fact and planning tables (single-user; tighten for multi-tenant)
 CREATE POLICY "Allow public all" ON transactions
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all" ON budgets
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all" ON merchant_rules
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all" ON pay_dates
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all" ON savings_goals
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+    FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON TABLE types, categories, transactions, budgets, merchant_rules, pay_dates, savings_goals
+TO anon, authenticated;
+
+GRANT SELECT ON TABLE dim_date TO anon, authenticated;
 
 -- ============================================================
 -- 8. LEGACY VIEWS  (kept for backwards compatibility with API)
 -- ============================================================
-CREATE OR REPLACE VIEW v_monthly_summary AS
+CREATE OR REPLACE VIEW v_monthly_summary
+WITH (security_invoker = true) AS
 SELECT
     DATE_TRUNC('month', t.transaction_date)::DATE AS month,
     ts.name AS type_name,
@@ -290,7 +324,8 @@ JOIN types ts ON c.type_id = ts.id
 GROUP BY DATE_TRUNC('month', t.transaction_date), ts.name, c.name
 ORDER BY month DESC, ts.name, total_amount DESC;
 
-CREATE OR REPLACE VIEW v_budget_vs_actual AS
+CREATE OR REPLACE VIEW v_budget_vs_actual
+WITH (security_invoker = true) AS
 SELECT
     DATE_TRUNC('month', t.transaction_date)::DATE AS month,
     c.name AS category_name,
@@ -307,6 +342,7 @@ JOIN categories c ON b.category_id = c.id
 LEFT JOIN transactions t
     ON t.category_id = b.category_id
     AND t.transaction_date >= b.start_date
+    AND t.transaction_date < b.end_date
 WHERE b.category_id IS NOT NULL
   AND b.end_date = '2030-01-01'  -- current budgets only
 GROUP BY DATE_TRUNC('month', t.transaction_date), c.name, b.budget_amount
@@ -317,12 +353,16 @@ ORDER BY month DESC, c.name;
 --    Derived from consecutive pay_dates using LEAD window function
 --    Example: 2026-03-13 → 2026-04-13, 2026-04-14 → 2026-05-13, ...
 -- ============================================================
-CREATE OR REPLACE VIEW v_pay_periods AS
+CREATE OR REPLACE VIEW v_pay_periods
+WITH (security_invoker = true) AS
 SELECT
     pay_date AS period_start,
     COALESCE(
-        LEAD(pay_date) OVER (ORDER BY pay_date) - INTERVAL '1 day',
+        LEAD(pay_date) OVER (ORDER BY pay_date) - 1,
         '2030-01-01'::DATE
     ) AS period_end
 FROM pay_dates
 ORDER BY pay_date;
+
+GRANT SELECT ON TABLE v_monthly_summary, v_budget_vs_actual, v_pay_periods
+TO anon, authenticated;

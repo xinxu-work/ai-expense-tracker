@@ -18,7 +18,7 @@ Usage:
 """
 
 import csv, sys, os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from uuid import UUID
 from typing import Optional
 
@@ -152,9 +152,16 @@ def detect_pay_dates():
     inserted = 0
     for row in result.data:
         dt = row["transaction_date"]
-        # Check if already in pay_dates
+        candidate = date.fromisoformat(dt)
+        window_start = (candidate - timedelta(days=7)).isoformat()
+        window_end = (candidate + timedelta(days=7)).isoformat()
+        # A manually confirmed payday is authoritative even when the bank's
+        # salary transaction is recorded a few days later.
         existing = supabase.table("pay_dates") \
-            .select("pay_date").eq("pay_date", dt).execute()
+            .select("pay_date, source") \
+            .gte("pay_date", window_start) \
+            .lte("pay_date", window_end) \
+            .execute()
         if not existing.data:
             supabase.table("pay_dates").insert({
                 "pay_date": dt,

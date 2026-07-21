@@ -25,7 +25,7 @@ models:
           - not_null
 
   - name: fct_budget_vs_actual
-    description: "Budget vs actual spending comparison with variance and utilisation metrics"
+    description: "Category budget versus actual spending for the selected payday or calendar reporting period"
     columns:
       - name: fiscal_month
         tests:
@@ -37,7 +37,7 @@ models:
                 values: ['over_budget', 'near_budget', 'within_budget']
 
   - name: fct_expense_group_summary
-    description: "Fixed vs variable expense group spending vs budget, with utilisation % and status"
+    description: "Fixed and variable living expenses versus budget for the selected reporting period"
     columns:
       - name: fiscal_month
         tests:
@@ -50,7 +50,7 @@ models:
                 values: ['fixed', 'variable']
 
   - name: fct_pay_period_summary
-    description: "Pay period aggregated transactions by category — dynamic periods based on actual salary dates"
+    description: "Transactions aggregated by confirmed salary period; supports an optional calendar-month mode"
     columns:
       - name: period_label
         tests:
@@ -58,6 +58,15 @@ models:
       - name: period_start_date
         tests:
           - not_null
+      - name: period_end_date
+        tests:
+          - not_null
+      - name: period_basis
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['payday', 'calendar', 'calendar_fallback']
       - name: category_name
         tests:
           - not_null

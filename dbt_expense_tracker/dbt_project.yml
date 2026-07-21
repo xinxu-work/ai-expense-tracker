@@ -15,6 +15,11 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+# Personal reporting follows confirmed salary dates by default. A calendar-
+# month deployment can override this with: --vars '{period_mode: calendar}'
+vars:
+  period_mode: payday
+
 models:
   expense_tracker:
     staging:

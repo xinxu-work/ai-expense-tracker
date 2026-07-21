@@ -54,10 +54,10 @@ SELECT
     d.quarter,
 
     -- From dim_date: fiscal period (mid-month to mid-month) — LEGACY
-    d.fiscal_year,
-    d.fiscal_month AS fiscal_month_number,
-    d.fiscal_month_label AS fiscal_month,
-    d.first_of_fiscal_month,
+    -- d.fiscal_year,
+    -- d.fiscal_month AS fiscal_month_number,
+    -- d.fiscal_month_label AS fiscal_month,
+    -- d.first_of_fiscal_month,
 
     -- From v_pay_periods: dynamic pay period (auto-detected from salary dates)
     pp.period_start AS pay_period_start,
@@ -73,3 +73,4 @@ JOIN date_dim d ON t.transaction_date = d.date
 LEFT JOIN pay_periods pp
     ON t.transaction_date >= pp.period_start
     AND t.transaction_date <= pp.period_end
+

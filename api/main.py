@@ -3,7 +3,7 @@ Expense Tracker API
 FastAPI backend connecting to Supabase PostgreSQL — Star Schema v3
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 from typing import Optional
 from uuid import UUID, uuid4
@@ -397,17 +397,33 @@ def trigger_pay_detection():
         .execute()
 
     inserted = 0
+    skipped_near_confirmed = 0
     for row in txns.data:
         dt = row["transaction_date"]
-        existing = supabase.table("pay_dates").select("pay_date").eq("pay_date", dt).execute()
+        candidate = date.fromisoformat(dt)
+        window_start = (candidate - timedelta(days=7)).isoformat()
+        window_end = (candidate + timedelta(days=7)).isoformat()
+        existing = (
+            supabase.table("pay_dates")
+            .select("pay_date,source")
+            .gte("pay_date", window_start)
+            .lte("pay_date", window_end)
+            .execute()
+        )
         if not existing.data:
             supabase.table("pay_dates").insert({
                 "pay_date": dt, "source": "auto",
                 "note": f"Detected from Salary transaction"
             }).execute()
             inserted += 1
+        else:
+            skipped_near_confirmed += 1
 
-    return {"pay_dates_detected": inserted, "total_salary_transactions": len(txns.data)}
+    return {
+        "pay_dates_detected": inserted,
+        "skipped_near_confirmed": skipped_near_confirmed,
+        "total_salary_transactions": len(txns.data),
+    }
 
 
 # --- Savings goals endpoints ---

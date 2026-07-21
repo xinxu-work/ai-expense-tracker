@@ -1,93 +1,149 @@
-import os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'api'))
+"""Read-only verification for the live Star Schema v3.1 database."""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "api"))
+
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), 'api', '.env'))
 from supabase import create_client
 
-supabase = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_KEY'))
 
-print("=" * 55)
-print("VERIFYING STAR SCHEMA v3")
-print("=" * 55)
+ACTIVE_END_DATE = "2030-01-01"
+EXPECTED_TYPES = {"fixed", "variable", "income", "saving"}
+EXPECTED_CATEGORIES = 22
+EXPECTED_CATEGORY_BUDGETS = 6
+EXPECTED_ENVELOPE_BUDGETS = 1
+EXPECTED_MERCHANT_RULES = 19
 
-errors = []
 
-# 1. types table
-types = supabase.table('types').select('*').order('sort_order').execute()
-print(f"\n[1] types ({len(types.data)} rows):")
-for t in types.data:
-    print(f"  {t['id'][:8]}... | {t['name']:<10s} | sort_order={t['sort_order']}")
-if len(types.data) != 4:
-    errors.append(f"types: expected 4 rows, got {len(types.data)}")
+def verify() -> int:
+    load_dotenv(os.path.join(os.path.dirname(__file__), "api", ".env"))
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        print("FAILED: SUPABASE_URL and SUPABASE_KEY are required in api/.env")
+        return 2
 
-# 2. categories with type_id FK → types
-cats = supabase.table('categories').select('name, type_id, types!inner(name)').order('name').execute()
-print(f"\n[2] categories ({len(cats.data)} rows) — FK → types:")
-by_type = {}
-for c in cats.data:
-    tname = c['types']['name']
-    by_type.setdefault(tname, []).append(c['name'])
-for tname in ['fixed', 'variable', 'income', 'saving']:
-    names = by_type.get(tname, [])
-    print(f"  {tname:<10s} ({len(names)}): {', '.join(names)}")
-if len(cats.data) < 22:
-    errors.append(f"categories: expected 22+ rows, got {len(cats.data)}")
+    supabase = create_client(url, key)
+    errors: list[str] = []
 
-# 3. budgets table — per-category (active only: end_date = '2030-01-01')
-cat_budgets = supabase.table('budgets').select('start_date, end_date, budget_amount, types(name), categories(name)').not_.is_('category_id', 'null').eq('end_date', '2030-01-01').execute()
-print(f"\n[3] budgets — per-category (active, {len(cat_budgets.data)} rows):")
-for b in cat_budgets.data:
-    amt = float(b['budget_amount'])
-    cname = b['categories']['name']
-    tname = b['types']['name']
-    print(f"  {b['start_date']} → {b['end_date']} | {tname} | {cname:<20s} | ${amt:,.0f}")
+    print("=" * 60)
+    print("VERIFYING LIVE STAR SCHEMA v3.1 (READ ONLY)")
+    print("=" * 60)
 
-# 4. budgets table — envelope (category_id IS NULL, active only)
-env_budgets = supabase.table('budgets').select('start_date, end_date, budget_amount, types(name)').is_('category_id', 'null').eq('end_date', '2030-01-01').execute()
-print(f"\n[4] budgets — envelope (active, {len(env_budgets.data)} rows):")
-for b in env_budgets.data:
-    amt = float(b['budget_amount'])
-    tname = b['types']['name']
-    print(f"  {b['start_date']} → {b['end_date']} | {tname:<10s} | ENVELOPE | ${amt:,.0f}")
+    types = supabase.table("types").select("id,name,sort_order").order("sort_order").execute()
+    type_names = {row["name"] for row in types.data}
+    print(f"\n[1] types: {len(types.data)} rows -> {', '.join(sorted(type_names))}")
+    if type_names != EXPECTED_TYPES:
+        errors.append(f"types: expected {sorted(EXPECTED_TYPES)}, got {sorted(type_names)}")
 
-# 5. merchant_rules
-rules = supabase.table('merchant_rules').select('keyword, categories(name), priority').order('priority', desc=True).execute()
-print(f"\n[5] merchant_rules ({len(rules.data)} rows):")
-for r in rules.data[:10]:  # show first 10
-    print(f"  {r['keyword']:<20s} → {r['categories']['name']:<20s} (priority={r['priority']})")
-if len(rules.data) < 5:
-    errors.append(f"merchant_rules: expected 5+ seed rules, got {len(rules.data)}")
+    categories = (
+        supabase.table("categories")
+        .select("id,name,type_id,types!inner(name)")
+        .order("name")
+        .execute()
+    )
+    by_type: dict[str, list[str]] = {}
+    for category in categories.data:
+        type_name = category["types"]["name"]
+        by_type.setdefault(type_name, []).append(category["name"])
 
-# 6. pay_dates
-pay_dates = supabase.table('pay_dates').select('*').order('pay_date').execute()
-print(f"\n[6] pay_dates ({len(pay_dates.data)} rows):")
-for pd in pay_dates.data:
-    print(f"  {pd['pay_date']} | source={pd['source']} | {pd.get('note', '')}")
+    print(f"\n[2] categories: {len(categories.data)} rows")
+    for type_name in ["fixed", "variable", "income", "saving"]:
+        print(f"  {type_name:<10} {len(by_type.get(type_name, []))} categories")
+    if len(categories.data) != EXPECTED_CATEGORIES:
+        errors.append(
+            f"categories: expected {EXPECTED_CATEGORIES}, got {len(categories.data)}"
+        )
+    if any(not category.get("type_id") for category in categories.data):
+        errors.append("categories: one or more type_id values are NULL")
 
-# 7. v_pay_periods
-periods = supabase.table('v_pay_periods').select('*').order('period_start').execute()
-print(f"\n[7] v_pay_periods ({len(periods.data)} rows):")
-for pp in periods.data:
-    print(f"  {pp['period_start']} → {pp['period_end']}")
+    category_budgets = (
+        supabase.table("budgets")
+        .select("type_id,category_id,start_date,end_date,budget_amount,categories(name,type_id)")
+        .not_.is_("category_id", "null")
+        .eq("end_date", ACTIVE_END_DATE)
+        .execute()
+    )
+    envelope_budgets = (
+        supabase.table("budgets")
+        .select("type_id,category_id,start_date,end_date,budget_amount")
+        .is_("category_id", "null")
+        .eq("end_date", ACTIVE_END_DATE)
+        .execute()
+    )
+    print(
+        f"\n[3] active budgets: {len(category_budgets.data)} category + "
+        f"{len(envelope_budgets.data)} envelope"
+    )
+    if len(category_budgets.data) != EXPECTED_CATEGORY_BUDGETS:
+        errors.append(
+            "category budgets: expected "
+            f"{EXPECTED_CATEGORY_BUDGETS}, got {len(category_budgets.data)}"
+        )
+    if len(envelope_budgets.data) != EXPECTED_ENVELOPE_BUDGETS:
+        errors.append(
+            "envelope budgets: expected "
+            f"{EXPECTED_ENVELOPE_BUDGETS}, got {len(envelope_budgets.data)}"
+        )
+    for budget in category_budgets.data:
+        category = budget.get("categories")
+        if not category or category.get("type_id") != budget.get("type_id"):
+            errors.append("budgets: a category budget is linked to the wrong type")
+            break
 
-# 8. savings_goals
-goals = supabase.table('savings_goals').select('*').execute()
-print(f"\n[8] savings_goals ({len(goals.data)} rows):")
-for g in goals.data:
-    print(f"  {g['name']} | ${float(g['current_amount']):,.0f} / ${float(g['target_amount']):,.0f} | {g['status']}")
+    rules = (
+        supabase.table("merchant_rules")
+        .select("id,keyword,category_id,priority")
+        .execute()
+    )
+    print(f"\n[4] merchant_rules: {len(rules.data)} rows")
+    if len(rules.data) != EXPECTED_MERCHANT_RULES:
+        errors.append(
+            f"merchant_rules: expected {EXPECTED_MERCHANT_RULES}, got {len(rules.data)}"
+        )
 
-# 9. transactions FK → dim_date + categories
-txns = supabase.table('transactions').select('id, amount, transaction_date, source, categories(name)').limit(5).execute()
-print(f"\n[9] transactions (sample of 5, FK → dim_date + categories):")
-for t in txns.data:
-    print(f"  {str(t['transaction_date'])[:10]} | {t['source']:<12s} | {t['categories']['name']:<20s} | ${float(t['amount']):,.2f}")
+    pay_dates = supabase.table("pay_dates").select("pay_date,source").execute()
+    periods = supabase.table("v_pay_periods").select("period_start,period_end").execute()
+    print(f"\n[5] pay_dates: {len(pay_dates.data)}; pay periods: {len(periods.data)}")
+    if len(periods.data) != len(pay_dates.data):
+        errors.append("v_pay_periods: row count does not match pay_dates")
+    if any(row.get("source") not in {"auto", "manual"} for row in pay_dates.data):
+        errors.append("pay_dates: invalid source value")
 
-# Summary
-print("\n" + "=" * 55)
-if errors:
-    print(f"FAILED — {len(errors)} error(s):")
-    for e in errors:
-        print(f"  x {e}")
-else:
-    print("ALL CHECKS PASSED — Star Schema v3.1 is live")
-print("=" * 55)
+    transactions = supabase.table("transactions").select("id,source").execute()
+    print(f"\n[6] transactions preserved: {len(transactions.data)} rows")
+    if not transactions.data:
+        errors.append("transactions: expected existing rows after migration")
+    if any(row.get("source") not in {"manual", "bank_import"} for row in transactions.data):
+        errors.append("transactions: NULL or invalid source value")
+
+    monthly_view = supabase.table("v_monthly_summary").select("*").limit(1).execute()
+    budget_view = supabase.table("v_budget_vs_actual").select("*").limit(1).execute()
+    print(
+        "\n[7] public views reachable: "
+        f"monthly={monthly_view.data is not None}, budget={budget_view.data is not None}"
+    )
+
+    print("\n" + "=" * 60)
+    if errors:
+        print(f"FAILED - {len(errors)} error(s):")
+        for error in errors:
+            print(f"  - {error}")
+        print("=" * 60)
+        return 1
+
+    print("ALL CHECKS PASSED - Star Schema v3.1 is live")
+    print("=" * 60)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(verify())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"FAILED: schema verification could not complete: {exc}")
+        raise SystemExit(2) from exc
