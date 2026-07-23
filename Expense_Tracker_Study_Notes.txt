@@ -1,3 +1,30 @@
 dim_date answers calendar questions such as “What weekday was this?” or “Which calendar quarter?” Meanwhile, v_pay_periods determines which personal reporting period contains the transaction.
 
-dbt builds the models automatically in dependency order when you run `dbt run`; you do not run each SQL file manually. The staging model reads the existing Supabase tables and views, cleans and enriches the transaction data, and is materialized as a view. The mart models use the staging view and are materialized as reporting tables. dbt discovers this order from `{{ ref(...) }}`  references, then `dbt test` validates the generated objects and their data.
+
+In the staging folder, stg_transactions.sql generates a cleaned transaction view enriched with calendar and payday-period fields, stg_categories.sql generates a category view enriched with type information such as fixed, variable, income, or saving, and schema.yml documents and tests the staging models; in the marts folder, fct_pay_period_summary.sql generates a table of transactions aggregated by confirmed salary periods, fct_monthly_summary.sql generates a category-level summary by selected reporting period, fct_budget_vs_actual.sql generates budget-versus-actual results by category and period, fct_expense_group_summary.sql generates fixed and variable expense totals compared with budgets, fct_savings_rate.sql generates income, expense, saving, and savings-rate metrics by reporting period, and the marts schema.yml documents and tests these reporting tables.
+
+
+profiles.yml describes the database connection for dbt, including host, port, database, schema, user, password, and adapter settings; keep it local and use environment variables for the password.
+dbt_project.yml defines project-level settings, model locations, variables, materialization defaults, and schema names.
+The models/staging folder contains staging SQL files and a schema.yml; its SQL files create cleaned staging views, while the YAML documents and tests them.
+The models/marts folder contains mart SQL files and a schema.yml; its SQL files create reporting tables, while the YAML documents and tests them.
+schema.yml mainly defines documentation and data-quality tests; model dependency order is created by SQL references such as {{ ref('stg_transactions') }} and {{ ref('fct_pay_period_summary') }}.
+
+The normal dbt workflow is:
+dbt parse
+Checks project configuration, YAML, SQL templating, and the dependency graph without building database objects.
+dbt run
+Builds the staging views and mart tables in dependency order, but does not run tests.
+dbt test
+Runs the data-quality tests defined in the YAML files.
+dbt build
+Runs models and tests together in dependency order, so this is usually the best command for a complete refresh:
+
+
+dbt parse uses a dbt installation already installed on your computer.
+uvx --from dbt-postgres dbt parse temporarily downloads and runs dbt with the PostgreSQL adapter.
+
+
+QA:
+Question 1: How did build your RAG?
+I have built the structured-data and agent foundation of a personal finance assistant. The Foundry agent uses controlled tools to retrieve Supabase data, while FastAPI performs deterministic financial calculations. I would extend it into a hybrid RAG architecture by adding document ingestion, hash-based versioning, chunk embeddings, vector retrieval, metadata filtering, citations, evaluation, and governance. Structured financial facts would remain API or SQL tools rather than being inferred from embedding

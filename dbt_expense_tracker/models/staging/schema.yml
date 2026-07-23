@@ -61,7 +61,7 @@ sources:
         description: "Unified budget table — per-category when category_id is set, envelope when NULL"
 
       - name: dim_date
-        description: "Date dimension with calendar and fiscal period attributes"
+        description: "Standard date dimension with calendar attributes"
 
       - name: savings_goals
         description: "Savings goals with targets and progress"

@@ -206,6 +206,7 @@ marts
 
 - [ ] AI-powered transaction categorisation (Claude API)
 - [ ] Auto-import from bank CSV/OFX files
+- [ ] Hybrid RAG for budgeting rules, receipts, statements, and personal finance notes
 - [ ] Multi-tenant support for customer deployments
 - [ ] Airflow orchestration for scheduled dbt runs
 - [ ] Industry templates (restaurant, retail)
@@ -215,6 +216,30 @@ marts
 Agent 365 is deliberately excluded from the personal prototype's runtime. See
 [`docs/agent-365-governance-roadmap.md`](docs/agent-365-governance-roadmap.md)
 for the future adoption design.
+
+See [`docs/rag-development-plan.md`](docs/rag-development-plan.md) for the
+hybrid RAG architecture, delivery phases, data model, evaluation criteria, and
+production governance plan.
+
+### RAG learning slice
+
+The first hands-on RAG slice uses the interview knowledge base stored at
+`DS/Interview_Prep/AI_Engineer_Knowledge_QA.md`. Start FastAPI, then use:
+
+```bash
+curl http://localhost:8000/knowledge/health
+
+curl -X POST http://localhost:8000/knowledge/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"How do I evaluate a production RAG application?","top_k":3}'
+```
+
+The endpoint returns question-level chunks with source line citations. This
+first learning slice uses dependency-free TF-IDF retrieval so it can run
+without an embedding API or vector database. The Foundry agent exposes the
+same capability through `retrieve_knowledge`; exact financial questions
+continue to use the existing structured tools. The next production upgrade is
+to replace the local retriever with dense embeddings and a vector index.
 
 ---
 
@@ -226,14 +251,17 @@ expense_tracker/
 |-- foundry_agent.py             # Foundry chat agent and tool dispatch
 |-- requirements-agent.txt       # Foundry agent dependencies
 |-- docs/
+|   |-- rag-development-plan.md
 |   |-- agent-365-governance-roadmap.md
 |-- api/
 |   |-- main.py                  # FastAPI backend
 |   |-- budget_advisor.py        # Deterministic purchase budget rules
+|   |-- knowledge_rag.py         # Citation-preserving local knowledge retrieval
 |   |-- requirements.txt         # Python dependencies
 |   |-- .env.example             # Environment template
 |   |-- tests/
 |       |-- test_budget_advisor.py
+|       |-- test_knowledge_rag.py
 |-- dbt_expense_tracker/
 |   |-- dbt_project.yml          # dbt config
 |   |-- profiles.yml             # DB connection (copy to ~/.dbt/)

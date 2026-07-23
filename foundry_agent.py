@@ -319,6 +319,34 @@ def check_purchase_affordability(
             "hint": f"Start FastAPI at {EXPENSE_API_URL} before using this tool.",
         })
 
+
+def retrieve_knowledge(query: str, top_k: int = 5) -> str:
+    """Retrieve cited chunks from the connected interview knowledge base."""
+    endpoint = urljoin(EXPENSE_API_URL.rstrip("/") + "/", "knowledge/search")
+    payload = {"query": query, "top_k": top_k}
+    request = Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            return response.read().decode("utf-8")
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return json.dumps({
+            "error": "knowledge_search_rejected_request",
+            "status_code": exc.code,
+            "detail": body,
+        })
+    except URLError as exc:
+        return json.dumps({
+            "error": "expense_api_unavailable",
+            "detail": str(exc.reason),
+            "hint": f"Start FastAPI at {EXPENSE_API_URL} before using this tool.",
+        })
+
 # ---------------------------------------------------------------------------
 # Tool registry — register every function as a Foundry tool
 # ---------------------------------------------------------------------------
@@ -423,6 +451,31 @@ TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "function": retrieve_knowledge,
+        "name": "retrieve_knowledge",
+        "description": (
+            "Retrieve relevant, cited passages from the connected knowledge base. "
+            "Use for interview notes, budgeting rules, documented explanations, "
+            "and other unstructured knowledge. Do not use this to calculate "
+            "transaction totals, budgets, or affordability."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The question or topic to search for",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of evidence chunks to return, from 1 to 10",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 # Build FunctionTool objects and dispatch map
@@ -464,6 +517,8 @@ def create_agent(project: AIProjectClient):
                 "You are a personal finance assistant with access to the user's expense tracker database. "
                 "Use the provided function tools to answer questions about their spending, budget, savings, "
                 "and transactions. Always present amounts with a dollar sign and round to two decimal places. "
+                "Use retrieve_knowledge for documented interview knowledge, budgeting rules, and explanations; "
+                "when using it, cite the returned source and do not invent unsupported information. "
                 "When comparing budget vs actual, highlight categories that are over or near budget. "
                 "For proposed purchases, always call check_purchase_affordability; do not estimate or "
                 "calculate affordability yourself. Explain whether it is within budget, tight, over "

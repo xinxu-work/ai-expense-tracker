@@ -18,8 +18,10 @@ import os
 
 try:
     from .budget_advisor import CategoryNotFoundError, assess_purchase
+    from .knowledge_rag import KnowledgeBase, default_knowledge_path
 except ImportError:  # Supports `python main.py` from the api directory.
     from budget_advisor import CategoryNotFoundError, assess_purchase
+    from knowledge_rag import KnowledgeBase, default_knowledge_path
 
 load_dotenv()
 
@@ -34,6 +36,11 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("Set SUPABASE_URL and SUPABASE_KEY in .env")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# --- Local knowledge base ---
+# The path can be overridden with KNOWLEDGE_BASE_PATH. The default discovers
+# the interview-prep Markdown file in the current workspace.
+knowledge_base = KnowledgeBase(default_knowledge_path())
 
 # --- App ---
 app = FastAPI(
@@ -97,6 +104,12 @@ class PurchaseAffordabilityRequest(BaseModel):
     category_name: str = Field(default="Shopping", min_length=1, max_length=50)
     purchase_date: date = Field(default_factory=sydney_today)
     warning_threshold: float = Field(default=0.90, ge=0.50, le=1.0)
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=500)
+    top_k: int = Field(default=5, ge=1, le=10)
+    min_score: float = Field(default=0.05, ge=0.0, le=1.0)
 
 
 # --- Type endpoints (replaces expense-groups) ---
@@ -456,6 +469,35 @@ def update_savings_goal(goal_id: UUID, current_amount: float):
     if not result.data:
         raise HTTPException(status_code=404, detail="Goal not found")
     return result.data[0]
+
+
+# --- Knowledge retrieval endpoints ---
+@app.get("/knowledge/health")
+def knowledge_health():
+    """Report whether the interview knowledge source can be indexed."""
+    try:
+        return knowledge_base.status()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/knowledge/search")
+def search_knowledge(request: KnowledgeSearchRequest):
+    """Retrieve cited knowledge chunks for the Foundry agent or UI."""
+    try:
+        matches = knowledge_base.search(
+            request.query,
+            top_k=request.top_k,
+            min_score=request.min_score,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "query": request.query,
+        "source_path": str(knowledge_base.source_path),
+        "matches": [match.as_dict() for match in matches],
+    }
 
 
 # --- Health check ---
