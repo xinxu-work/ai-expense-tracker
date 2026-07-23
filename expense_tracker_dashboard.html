@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI-Powered Expense Tracker</title>
+  <style>
+    :root {
+      --ink: #14233f;
+      --muted: #647594;
+      --line: #e2e9f2;
+      --panel: #ffffff;
+      --canvas: #f7fbff;
+      --teal: #15a7b2;
+      --teal-dark: #087d91;
+      --blue: #2778e8;
+      --green: #1cad84;
+      --orange: #ff951c;
+      --shadow: 0 16px 38px rgba(41, 76, 117, .09);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .page {
+      min-height: 100vh;
+      padding: 34px clamp(18px, 4vw, 66px) 48px;
+      background:
+        radial-gradient(circle at 90% 8%, rgba(61, 148, 224, .12) 0 2px, transparent 3px) 0 0 / 28px 28px,
+        linear-gradient(135deg, #fff 0%, #f6fbff 62%, #eef7ff 100%);
+    }
+    .hero { max-width: 1440px; margin: 0 auto 24px; text-align: center; }
+    .eyebrow { margin: 0 0 8px; color: var(--teal-dark); font-size: 12px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); letter-spacing: -.04em; line-height: 1.05; }
+    .subtitle { margin: 12px 0 0; color: #536889; font-size: clamp(15px, 2vw, 21px); }
+
+    .app-shell { max-width: 1440px; margin: 0 auto; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; color: #fff; background: linear-gradient(135deg, var(--teal), var(--blue)); box-shadow: 0 8px 18px rgba(21, 167, 178, .24); }
+    .toolbar-actions { display: flex; gap: 8px; }
+    .icon-button { border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; color: var(--muted); background: #fff; }
+
+    .dashboard { display: grid; grid-template-columns: minmax(280px, .86fr) minmax(300px, .86fr) minmax(450px, 1.48fr); gap: 14px; }
+    .panel { min-width: 0; padding: 18px; border: 1px solid rgba(218, 228, 239, .92); border-radius: 17px; background: rgba(255,255,255,.94); box-shadow: var(--shadow); }
+    .panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .step { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--teal); font-size: 13px; font-weight: 800; }
+    .step.blue { background: var(--blue); }
+    .step.green { background: var(--green); }
+    h2 { margin: 0; font-size: 18px; }
+    .hint { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+    .dropzone { display: grid; min-height: 175px; place-items: center; padding: 20px; border: 1.5px dashed #b8c9db; border-radius: 13px; text-align: center; transition: .2s ease; }
+    .dropzone.dragging { border-color: var(--teal); background: #effcff; transform: translateY(-1px); }
+    .file-icon { display: flex; justify-content: center; gap: 6px; margin-bottom: 9px; color: var(--teal-dark); font-size: 30px; }
+    .dropzone p { margin: 4px 0; color: var(--muted); font-size: 12px; }
+    .primary-button { border: 0; border-radius: 8px; padding: 9px 17px; color: #fff; background: linear-gradient(135deg, #11acb1, #198dc2); font-size: 12px; font-weight: 800; box-shadow: 0 7px 14px rgba(23, 151, 181, .22); }
+    .hidden-input { display: none; }
+
+    .upload-status { display: none; align-items: center; gap: 9px; margin-top: 11px; padding: 10px; border: 1px solid #c8eddf; border-radius: 10px; color: #147c61; background: #effcf6; font-size: 12px; }
+    .upload-status.visible { display: flex; }
+    .check { width: 22px; height: 22px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: #fff; background: var(--green); font-weight: 900; }
+    .file-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 11px 0 17px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+    .file-meta { min-width: 0; }
+    .file-name { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .file-badge { color: var(--green); font-size: 18px; }
+    .preview-title { margin: 0 0 7px; color: var(--ink); font-size: 12px; font-weight: 800; }
+    .preview { width: 100%; border-collapse: collapse; overflow: hidden; font-size: 10px; }
+    .preview th, .preview td { padding: 7px 5px; border-bottom: 1px solid #edf1f5; text-align: left; white-space: nowrap; }
+    .preview th { color: #62758f; font-weight: 700; }
+
+    .chat-panel { display: flex; flex-direction: column; }
+    .chat-feed { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 420px; }
+    .bubble { max-width: 90%; padding: 11px 12px; border-radius: 12px; color: #233652; font-size: 12px; line-height: 1.5; }
+    .bubble.user { align-self: flex-end; background: #eaf4ff; border-bottom-right-radius: 4px; }
+    .bubble.assistant { align-self: flex-start; background: #fbfcfe; border: 1px solid #e8edf3; border-bottom-left-radius: 4px; }
+    .bubble strong { color: var(--ink); }
+    .bubble small { display: block; margin-top: 5px; color: #7990ad; font-size: 9px; text-align: right; }
+    .quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 11px 0; }
+    .quick-actions button { padding: 7px 9px; border: 1px solid #9bc4ff; border-radius: 7px; color: #2372d2; background: #fff; font-size: 10px; }
+    .chat-form { display: flex; gap: 7px; margin-top: auto; }
+    .chat-form input { min-width: 0; flex: 1; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; outline: none; color: var(--ink); }
+    .chat-form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(39, 120, 232, .1); }
+    .send-button { width: 38px; border: 0; border-radius: 9px; color: #fff; background: var(--blue); font-size: 18px; }
+
+    .insights-panel { overflow: hidden; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 14px; }
+    .metric { padding: 12px; border: 1px solid #e4eaf1; border-radius: 11px; }
+    .metric-label { color: #6b7e98; font-size: 10px; }
+    .metric-value { margin: 5px 0 5px; font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
+    .metric-delta { color: var(--green); font-size: 10px; font-weight: 700; }
+    .metric-delta.orange { color: var(--orange); }
+    .progress { height: 4px; margin-top: 9px; overflow: hidden; border-radius: 10px; background: #e6ebf1; }
+    .progress span { display: block; height: 100%; width: 76%; background: var(--orange); }
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .chart-card { min-width: 0; padding: 12px; border: 1px solid #e4eaf1; border-radius: 11px; }
+    .chart-card.wide { grid-column: 1 / -1; }
+    .chart-title { margin: 0 0 8px; font-size: 12px; }
+    .donut-wrap { display: flex; align-items: center; gap: 12px; }
+    .donut { width: 108px; height: 108px; flex: 0 0 auto; border-radius: 50%; background: conic-gradient(#1ca7b3 0 28%, #1cae85 28% 49%, #2f72df 49% 65%, #ff9a1d 65% 79%, #d27c9f 79% 88%, #bec7d2 88%); position: relative; }
+    .donut::after { content: ""; position: absolute; inset: 25px; border-radius: 50%; background: #fff; }
+    .legend { display: grid; gap: 5px; color: #63758f; font-size: 10px; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .swatch { width: 7px; height: 7px; border-radius: 2px; }
+    .bar-chart { display: flex; align-items: end; justify-content: space-around; height: 133px; padding: 10px 3px 0; border-bottom: 1px solid #dce4ed; background: repeating-linear-gradient(to bottom, transparent 0 28px, #edf2f7 29px); }
+    .bar-item { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: end; gap: 4px; color: #71829a; font-size: 9px; }
+    .bar { width: 16px; min-height: 8px; border-radius: 4px 4px 0 0; background: linear-gradient(#2aafb8, #168aaf); }
+    .trend svg { display: block; width: 100%; height: 150px; }
+    .trend-labels { display: flex; justify-content: space-between; padding: 0 10px; color: #71829a; font-size: 9px; }
+
+    @media (max-width: 1100px) { .dashboard { grid-template-columns: 1fr 1fr; } .insights-panel { grid-column: 1 / -1; } }
+    @media (max-width: 700px) { .page { padding: 24px 12px 34px; } .toolbar { align-items: flex-start; } .dashboard { grid-template-columns: 1fr; } .insights-panel { grid-column: auto; } .metric-grid { grid-template-columns: 1fr; } .chart-grid { grid-template-columns: 1fr; } .chart-card.wide { grid-column: auto; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Personal finance intelligence</p>
+      <h1>AI-Powered Expense Tracker</h1>
+      <p class="subtitle">Intelligent insights. Smarter decisions. Better savings.</p>
+    </header>
+
+    <section class="app-shell" aria-label="Expense tracker dashboard">
+      <div class="toolbar">
+        <div class="brand"><span class="brand-mark">✦</span><span>ExpenseFlow</span></div>
+        <div class="toolbar-actions"><button class="icon-button" type="button" title="Notifications">♧</button><button class="icon-button" type="button" title="Settings">⚙</button></div>
+      </div>
+
+      <div class="dashboard">
+        <section class="panel upload-panel">
+          <div class="panel-header"><span class="step">1</span><div><h2>Upload</h2><p class="hint">Import your latest transactions</p></div></div>
+          <div class="dropzone" id="dropzone">
+            <div>
+              <div class="file-icon">▣ <span>▤</span></div>
+              <p>Drag &amp; drop your expense file here</p><p>or</p>
+              <button class="primary-button" id="choose-file" type="button">Choose file</button>
+              <input class="hidden-input" id="file-input" type="file" accept=".csv,.xlsx,.xls">
+            </div>
+          </div>
+          <div class="file-row" id="file-row">
+            <div class="file-meta"><div class="file-name" id="file-name">expenses_apr_2024.csv</div><div class="file-size" id="file-size">24.8 KB · Uploaded</div></div><div class="file-badge">✓</div>
+          </div>
+          <p class="preview-title">Preview <span style="font-weight:400;color:var(--muted)">(Top 5 rows)</span></p>
+          <table class="preview"><thead><tr><th>Date</th><th>Category</th><th>Merchant</th><th>Amount</th></tr></thead><tbody><tr><td>2024-04-20</td><td>Travel</td><td>Taxi</td><td>18.50</td></tr><tr><td>2024-04-19</td><td>Meals</td><td>Cafe</td><td>12.80</td></tr><tr><td>2024-04-18</td><td>Office</td><td>Supplies</td><td>45.00</td></tr><tr><td>2024-04-17</td><td>Utilities</td><td>Electricity</td><td>60.30</td></tr><tr><td>2024-04-16</td><td>Entertainment</td><td>Movies</td><td>22.00</td></tr></tbody></table>
+          <div class="upload-status" id="upload-status"><span class="check">✓</span><span><strong>File processed successfully</strong><br><span id="upload-detail">152 transactions imported</span></span></div>
+        </section>
+
+        <section class="panel chat-panel">
+          <div class="panel-header"><span class="step blue">2</span><div><h2>Chat Assistant</h2><p class="hint">Ask anything about your expenses</p></div></div>
+          <div class="chat-feed" id="chat-feed">
+            <div class="bubble user">What did I spend the most on last month?<small>10:30 AM</small></div>
+            <div class="bubble assistant">Your highest spending category last month was <strong>Travel ✈️</strong><br>Total spent: <strong>$620.45</strong> (28% of total)<small>10:30 AM</small></div>
+            <div class="bubble user">How am I doing against my budget for meals?<small>10:31 AM</small></div>
+            <div class="bubble assistant">You spent <strong>$312.40</strong> on meals against a budget of <strong>$400.00</strong>.<br>You're under budget by <strong>$87.60 🎉</strong><small>10:31 AM</small></div>
+          </div>
+          <div class="quick-actions"><button type="button" data-prompt="What are my top categories?">Top categories</button><button type="button" data-prompt="How am I doing against my budget?">Budget vs Actual</button><button type="button" data-prompt="How much did I save this month?">Savings this month</button></div>
+          <form class="chat-form" id="chat-form"><input id="chat-input" type="text" placeholder="Ask a question..." autocomplete="off"><button class="send-button" type="submit" aria-label="Send">➜</button></form>
+        </section>
+
+        <section class="panel insights-panel">
+          <div class="panel-header"><span class="step green">3</span><div><h2>Insights</h2><p class="hint">Your current reporting period</p></div></div>
+          <div class="metric-grid"><div class="metric"><div class="metric-label">Total Spend</div><div class="metric-value">$2,214.75</div><div class="metric-delta">↑ 8.5% vs last month</div></div><div class="metric"><div class="metric-label">Budget</div><div class="metric-value">$2,500.00</div><div class="metric-delta orange">12% remaining</div><div class="progress"><span></span></div></div><div class="metric"><div class="metric-label">Savings</div><div class="metric-value">$285.25</div><div class="metric-delta">↑ 15.3% vs last month</div></div></div>
+          <div class="chart-grid">
+            <div class="chart-card"><h3 class="chart-title">Spending by Category</h3><div class="donut-wrap"><div class="donut" aria-label="Spending category donut chart"></div><div class="legend"><span><i class="swatch" style="background:#1ca7b3"></i>Travel 28%</span><span><i class="swatch" style="background:#1cae85"></i>Meals 21%</span><span><i class="swatch" style="background:#2f72df"></i>Utilities 16%</span><span><i class="swatch" style="background:#ff9a1d"></i>Shopping 14%</span><span><i class="swatch" style="background:#d27c9f"></i>Entertainment 9%</span><span><i class="swatch" style="background:#bec7d2"></i>Others 12%</span></div></div></div>
+            <div class="chart-card"><h3 class="chart-title">Budget vs Actual</h3><div class="bar-chart"><div class="bar-item"><div class="bar" style="height:78%"></div>Travel</div><div class="bar-item"><div class="bar" style="height:54%"></div>Meals</div><div class="bar-item"><div class="bar" style="height:35%"></div>Utilities</div><div class="bar-item"><div class="bar" style="height:22%"></div>Shopping</div><div class="bar-item"><div class="bar" style="height:12%"></div>Others</div></div></div>
+            <div class="chart-card wide trend"><h3 class="chart-title">Savings Trend</h3><svg viewBox="0 0 620 150" role="img" aria-label="Savings trend from November to May"><defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#5ec9aa" stop-opacity=".36"/><stop offset="1" stop-color="#5ec9aa" stop-opacity=".04"/></linearGradient></defs><path d="M30 122 L125 100 L215 93 L310 76 L400 66 L495 40 L590 18 L590 135 L30 135 Z" fill="url(#area)"/><path d="M30 122 L125 100 L215 93 L310 76 L400 66 L495 40 L590 18" fill="none" stroke="#1cad84" stroke-width="3"/><g fill="#1cad84"><circle cx="30" cy="122" r="4"/><circle cx="125" cy="100" r="4"/><circle cx="215" cy="93" r="4"/><circle cx="310" cy="76" r="4"/><circle cx="400" cy="66" r="4"/><circle cx="495" cy="40" r="4"/><circle cx="590" cy="18" r="4"/></g><g fill="#8b9bb0" font-size="10"><text x="0" y="137">$0</text><text x="0" y="82">$200</text><text x="0" y="28">$400</text></g></svg><div class="trend-labels"><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span></div></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById('file-input');
+    const chooseFile = document.getElementById('choose-file');
+    const dropzone = document.getElementById('dropzone');
+    const fileName = document.getElementById('file-name');
+    const fileSize = document.getElementById('file-size');
+    const uploadStatus = document.getElementById('upload-status');
+    const uploadDetail = document.getElementById('upload-detail');
+    const formatSize = bytes => `${(bytes / 1024).toFixed(1)} KB · Uploaded`;
+    function handleFile(file) {
+      if (!file) return;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatSize(file.size);
+      uploadDetail.textContent = `Ready to process ${file.name}`;
+      uploadStatus.classList.add('visible');
+    }
+    chooseFile.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', event => handleFile(event.target.files[0]));
+    ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.remove('dragging'); }));
+    dropzone.addEventListener('drop', event => handleFile(event.dataTransfer.files[0]));
+
+    const replies = {
+      'What are my top categories?': 'Your top category is <strong>Travel</strong> at 28% of spending, followed by Meals at 21%.',
+      'How am I doing against my budget?': 'You have used 88% of your current budget and have <strong>$285.25</strong> remaining.',
+      'How much did I save this month?': 'You saved <strong>$285.25</strong> this period, which is 15.3% higher than last month.'
+    };
+    const feed = document.getElementById('chat-feed');
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('chat-input');
+    function addMessage(text, kind) { const bubble = document.createElement('div'); bubble.className = `bubble ${kind}`; bubble.innerHTML = `${text}<small>Now</small>`; feed.appendChild(bubble); feed.scrollTop = feed.scrollHeight; }
+    function ask(question) { if (!question.trim()) return; addMessage(question, 'user'); setTimeout(() => addMessage(replies[question] || 'I can help analyze your spending, budgets, categories, and savings. Try one of the quick questions below.', 'assistant'), 260); }
+    form.addEventListener('submit', event => { event.preventDefault(); ask(input.value); input.value = ''; });
+    document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => ask(button.dataset.prompt)));
+  </script>
+</body>
+</html>
